@@ -19,19 +19,36 @@ public class DBConnection {
 
         if (fullUrl != null && !fullUrl.isEmpty()) {
             try {
-                // Strip the scheme (postgres:// or postgresql://)
-                String withoutScheme = fullUrl.substring(fullUrl.indexOf("://") + 3);
+                int atIdx = fullUrl.lastIndexOf('@');
+                int schemeEnd = fullUrl.indexOf("://");
 
-                // Split off query string if present (e.g. ?sslmode=require)
+                if (atIdx == -1 || schemeEnd == -1 || atIdx < schemeEnd) {
+                    StringBuilder masked = new StringBuilder();
+                    for (int i = 0; i < fullUrl.length(); i++) {
+                        char c = fullUrl.charAt(i);
+                        if (c == ':' || c == '/' || c == '@' || c == '?' || c == '&' || c == '=' || (Character.isLetter(c) && i < schemeEnd + 3)) {
+                            masked.append(c);
+                        } else if (Character.isDigit(c)) {
+                            masked.append('#');
+                        } else {
+                            masked.append('*');
+                        }
+                    }
+                    throw new SQLException("DATABASE_URL structure unexpected. atIdx=" + atIdx
+                            + " schemeEnd=" + schemeEnd + " len=" + fullUrl.length()
+                            + " masked=" + masked.toString());
+                }
+
+                String withoutScheme = fullUrl.substring(schemeEnd + 3);
+                atIdx = withoutScheme.lastIndexOf('@');
+
                 String query = "";
                 int qIdx = withoutScheme.indexOf('?');
-                if (qIdx != -1) {
-                    query = withoutScheme.substring(qIdx); // includes leading "?"
+                if (qIdx != -1 && qIdx > atIdx) {
+                    query = withoutScheme.substring(qIdx);
                     withoutScheme = withoutScheme.substring(0, qIdx);
                 }
 
-                // withoutScheme is now: user:pass@host:port/dbname
-                int atIdx = withoutScheme.lastIndexOf('@'); // lastIndexOf in case password contains '@'
                 String userInfo = withoutScheme.substring(0, atIdx);
                 String hostPortDb = withoutScheme.substring(atIdx + 1);
 
@@ -53,14 +70,14 @@ public class DBConnection {
                 System.out.println("[DBConnection] host=" + host + " port=" + port + " db=" + db + " user=" + user);
 
                 return DriverManager.getConnection(jdbcUrl, user, pass);
+            } catch (SQLException e) {
+                throw e;
             } catch (Exception e) {
                 throw new SQLException("Failed to parse DATABASE_URL. Length=" + fullUrl.length()
-                        + " StartsWith=" + fullUrl.substring(0, Math.min(15, fullUrl.length()))
-                        + " Error=" + e.getMessage(), e);
+                        + " Error=" + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
             }
         }
 
-        // Fallback: individual env vars, or local defaults for running on your own machine
         String host = getEnvOrDefault("DB_HOST", "localhost");
         String port = getEnvOrDefault("DB_PORT", "5432");
         String name = getEnvOrDefault("DB_NAME", "ev_charging_network");
