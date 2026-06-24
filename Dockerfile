@@ -6,9 +6,12 @@ COPY src ./src
 COPY WebContent ./WebContent
 
 # Compile servlets/DAOs/models against the libs already bundled in WEB-INF/lib
+# Download the Jakarta Servlet API needed only for compiling (Tomcat provides it at runtime)
+ADD https://repo1.maven.org/maven2/jakarta/servlet/jakarta.servlet-api/6.0.0/jakarta.servlet-api-6.0.0.jar /tmp/servlet-api.jar
+
 RUN mkdir -p WebContent/WEB-INF/classes && \
     find src -name "*.java" > sources.txt && \
-    javac -cp "WebContent/WEB-INF/lib/*" -d WebContent/WEB-INF/classes @sources.txt
+    javac -cp "WebContent/WEB-INF/lib/*:/tmp/servlet-api.jar" -d WebContent/WEB-INF/classes @sources.txt
 
 # Package everything in WebContent into a fresh WAR (overwrites the old prebuilt one)
 WORKDIR /build/WebContent
