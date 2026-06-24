@@ -3,14 +3,8 @@ package com.ev.util;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class DBConnection {
-
-    // Matches: postgres(ql)://user:password@host:port/dbname
-    private static final Pattern DB_URL_PATTERN =
-        Pattern.compile("postgres(?:ql)?://([^:]+):([^@]+)@([^:/]+):(\\d+)/([^?]+)");
 
     static {
         try {
@@ -24,22 +18,46 @@ public class DBConnection {
         String fullUrl = System.getenv("DATABASE_URL");
 
         if (fullUrl != null && !fullUrl.isEmpty()) {
-            Matcher m = DB_URL_PATTERN.matcher(fullUrl);
-            if (!m.matches()) {
-                throw new SQLException("Could not parse DATABASE_URL (unexpected format). Value length: " + fullUrl.length());
+            try {
+                // Strip the scheme (postgres:// or postgresql://)
+                String withoutScheme = fullUrl.substring(fullUrl.indexOf("://") + 3);
+
+                // Split off query string if present (e.g. ?sslmode=require)
+                String query = "";
+                int qIdx = withoutScheme.indexOf('?');
+                if (qIdx != -1) {
+                    query = withoutScheme.substring(qIdx); // includes leading "?"
+                    withoutScheme = withoutScheme.substring(0, qIdx);
+                }
+
+                // withoutScheme is now: user:pass@host:port/dbname
+                int atIdx = withoutScheme.lastIndexOf('@'); // lastIndexOf in case password contains '@'
+                String userInfo = withoutScheme.substring(0, atIdx);
+                String hostPortDb = withoutScheme.substring(atIdx + 1);
+
+                int colonIdx = userInfo.indexOf(':');
+                String user = userInfo.substring(0, colonIdx);
+                String pass = userInfo.substring(colonIdx + 1);
+
+                int slashIdx = hostPortDb.indexOf('/');
+                String hostPort = hostPortDb.substring(0, slashIdx);
+                String db = hostPortDb.substring(slashIdx + 1);
+
+                int hostColonIdx = hostPort.lastIndexOf(':');
+                String host = hostPort.substring(0, hostColonIdx);
+                String port = hostPort.substring(hostColonIdx + 1);
+
+                String sslParam = query.contains("sslmode=") ? query : (query.isEmpty() ? "?sslmode=require" : query + "&sslmode=require");
+                String jdbcUrl = "jdbc:postgresql://" + host + ":" + port + "/" + db + sslParam;
+
+                System.out.println("[DBConnection] host=" + host + " port=" + port + " db=" + db + " user=" + user);
+
+                return DriverManager.getConnection(jdbcUrl, user, pass);
+            } catch (Exception e) {
+                throw new SQLException("Failed to parse DATABASE_URL. Length=" + fullUrl.length()
+                        + " StartsWith=" + fullUrl.substring(0, Math.min(15, fullUrl.length()))
+                        + " Error=" + e.getMessage(), e);
             }
-
-            String user = m.group(1);
-            String pass = m.group(2);
-            String host = m.group(3);
-            String port = m.group(4);
-            String db   = m.group(5);
-
-            String jdbcUrl = "jdbc:postgresql://" + host + ":" + port + "/" + db + "?sslmode=require";
-
-            System.out.println("[DBConnection] Connecting to host=" + host + " port=" + port + " db=" + db + " user=" + user);
-
-            return DriverManager.getConnection(jdbcUrl, user, pass);
         }
 
         // Fallback: individual env vars, or local defaults for running on your own machine
