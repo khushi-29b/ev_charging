@@ -15,81 +15,68 @@ public class DBConnection {
     }
 
     public static Connection getConnection() throws SQLException {
-        String fullUrl = System.getenv("DATABASE_URL");
+        // Prefer individual env vars first - simplest and most reliable.
+        String host = System.getenv("DB_HOST");
+        String port = System.getenv("DB_PORT");
+        String name = System.getenv("DB_NAME");
+        String user = System.getenv("DB_USER");
+        String pass = System.getenv("DB_PASS");
 
+        if (host != null && !host.isEmpty()) {
+            String jdbcUrl = "jdbc:postgresql://" + host + ":" +
+                    (port == null || port.isEmpty() ? "5432" : port) +
+                    "/" + (name == null || name.isEmpty() ? "ev_charging_network" : name) +
+                    "?sslmode=require";
+
+            System.out.println("[DBConnection] Using individual env vars. host=" + host + " port=" + port + " db=" + name + " user=" + user);
+
+            return DriverManager.getConnection(jdbcUrl, user, pass);
+        }
+
+        // Fallback: parse DATABASE_URL if individual vars aren't set
+        String fullUrl = System.getenv("DATABASE_URL");
         if (fullUrl != null && !fullUrl.isEmpty()) {
             try {
-                int atIdx = fullUrl.lastIndexOf('@');
                 int schemeEnd = fullUrl.indexOf("://");
-
-                if (atIdx == -1 || schemeEnd == -1 || atIdx < schemeEnd) {
-                    StringBuilder masked = new StringBuilder();
-                    for (int i = 0; i < fullUrl.length(); i++) {
-                        char c = fullUrl.charAt(i);
-                        if (c == ':' || c == '/' || c == '@' || c == '?' || c == '&' || c == '=' || (Character.isLetter(c) && i < schemeEnd + 3)) {
-                            masked.append(c);
-                        } else if (Character.isDigit(c)) {
-                            masked.append('#');
-                        } else {
-                            masked.append('*');
-                        }
-                    }
-                    throw new SQLException("DATABASE_URL structure unexpected. atIdx=" + atIdx
-                            + " schemeEnd=" + schemeEnd + " len=" + fullUrl.length()
-                            + " masked=" + masked.toString());
-                }
-
                 String withoutScheme = fullUrl.substring(schemeEnd + 3);
-                atIdx = withoutScheme.lastIndexOf('@');
 
-                String query = "";
                 int qIdx = withoutScheme.indexOf('?');
-                if (qIdx != -1 && qIdx > atIdx) {
+                String query = "";
+                if (qIdx != -1) {
                     query = withoutScheme.substring(qIdx);
                     withoutScheme = withoutScheme.substring(0, qIdx);
                 }
 
+                int atIdx = withoutScheme.lastIndexOf('@');
                 String userInfo = withoutScheme.substring(0, atIdx);
                 String hostPortDb = withoutScheme.substring(atIdx + 1);
 
                 int colonIdx = userInfo.indexOf(':');
-                String user = userInfo.substring(0, colonIdx);
-                String pass = userInfo.substring(colonIdx + 1);
+                String u = userInfo.substring(0, colonIdx);
+                String p = userInfo.substring(colonIdx + 1);
 
                 int slashIdx = hostPortDb.indexOf('/');
                 String hostPort = hostPortDb.substring(0, slashIdx);
                 String db = hostPortDb.substring(slashIdx + 1);
 
                 int hostColonIdx = hostPort.lastIndexOf(':');
-                String host = hostPort.substring(0, hostColonIdx);
-                String port = hostPort.substring(hostColonIdx + 1);
+                String h = hostPort.substring(0, hostColonIdx);
+                String pt = hostPort.substring(hostColonIdx + 1);
 
-                String sslParam = query.contains("sslmode=") ? query : (query.isEmpty() ? "?sslmode=require" : query + "&sslmode=require");
-                String jdbcUrl = "jdbc:postgresql://" + host + ":" + port + "/" + db + sslParam;
+                String sslParam = query.contains("sslmode=") ? query : "?sslmode=require";
+                String jdbcUrl = "jdbc:postgresql://" + h + ":" + pt + "/" + db + sslParam;
 
-                System.out.println("[DBConnection] host=" + host + " port=" + port + " db=" + db + " user=" + user);
+                System.out.println("[DBConnection] Using DATABASE_URL. host=" + h + " port=" + pt + " db=" + db);
 
-                return DriverManager.getConnection(jdbcUrl, user, pass);
-            } catch (SQLException e) {
-                throw e;
+                return DriverManager.getConnection(jdbcUrl, u, p);
             } catch (Exception e) {
-                throw new SQLException("Failed to parse DATABASE_URL. Length=" + fullUrl.length()
-                        + " Error=" + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
+                throw new SQLException("Could not connect using DB_HOST or DATABASE_URL. "
+                        + "DB_HOST was empty/missing, and parsing DATABASE_URL failed: " + e.getMessage(), e);
             }
         }
 
-        String host = getEnvOrDefault("DB_HOST", "localhost");
-        String port = getEnvOrDefault("DB_PORT", "5432");
-        String name = getEnvOrDefault("DB_NAME", "ev_charging_network");
-        String user = getEnvOrDefault("DB_USER", "postgres");
-        String pass = getEnvOrDefault("DB_PASS", "root");
-
-        String jdbcUrl = "jdbc:postgresql://" + host + ":" + port + "/" + name;
-        return DriverManager.getConnection(jdbcUrl, user, pass);
-    }
-
-    private static String getEnvOrDefault(String key, String def) {
-        String val = System.getenv(key);
-        return (val != null && !val.isEmpty()) ? val : def;
+        // Last resort: local defaults for your own machine
+        String jdbcUrl = "jdbc:postgresql://localhost:5432/ev_charging_network";
+        return DriverManager.getConnection(jdbcUrl, "postgres", "root");
     }
 }
