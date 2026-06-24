@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: ev-charging-app
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ev-charging-db
+          property: connectionString
+
+databases:
+  - name: ev-charging-db
+    plan: free
+    databaseName: ev_charging_network
+    user: ev_admin

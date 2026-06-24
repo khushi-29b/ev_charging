@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns="https://jakarta.ee/xml/ns/jakartaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee
+                             https://jakarta.ee/xml/ns/jakartaee/web-app_5_0.xsd"
+         version="5.0">
+
+    <display-name>EV Charging Network</display-name>
+
+    <!--
+      NOTE: The servlets (StationServlet, UserServlet, VehicleServlet,
+      SessionServlet, TicketServlet, PaymentServlet) are already registered
+      via @WebServlet(...) annotations in their .java files, so they do NOT
+      need <servlet>/<servlet-mapping> entries here. The original web.xml had
+      duplicate/conflicting entries outside the <web-app> root (invalid XML),
+      which has been removed.
+    -->
+
+    <!-- CORS Filter - allows frontend to call backend APIs -->
+    <filter>
+        <filter-name>CORSFilter</filter-name>
+        <filter-class>com.ev.util.CORSFilter</filter-class>
+    </filter>
+    <filter-mapping>
+        <filter-name>CORSFilter</filter-name>
+        <url-pattern>/api/*</url-pattern>
+    </filter-mapping>
+
+    <welcome-file-list>
+        <welcome-file>index.html</welcome-file>
+    </welcome-file-list>
+
+</web-app>
