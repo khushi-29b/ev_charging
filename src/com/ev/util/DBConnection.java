@@ -3,8 +3,14 @@ package com.ev.util;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class DBConnection {
+
+    // Matches: postgres(ql)://user:password@host:port/dbname
+    private static final Pattern DB_URL_PATTERN =
+        Pattern.compile("postgres(?:ql)?://([^:]+):([^@]+)@([^:/]+):(\\d+)/([^?]+)");
 
     static {
         try {
@@ -18,25 +24,22 @@ public class DBConnection {
         String fullUrl = System.getenv("DATABASE_URL");
 
         if (fullUrl != null && !fullUrl.isEmpty()) {
-            // Render/Heroku-style: postgres://user:pass@host:port/dbname
-            try {
-                java.net.URI uri = new java.net.URI(fullUrl);
-                String userInfo = uri.getUserInfo();
-                String user = "postgres";
-                String pass = "";
-                if (userInfo != null) {
-                    String[] parts = userInfo.split(":", 2);
-                    user = parts[0];
-                    pass = parts.length > 1 ? parts[1] : "";
-                }
-                String db = uri.getPath().startsWith("/") ? uri.getPath().substring(1) : uri.getPath();
-                String sep = fullUrl.contains("sslmode=") ? "" : "?sslmode=require";
-                String jdbcUrl = "jdbc:postgresql://" + uri.getHost() + ":" + uri.getPort() + "/" + db + sep;
-
-                return DriverManager.getConnection(jdbcUrl, user, pass);
-            } catch (Exception e) {
-                throw new SQLException("Invalid DATABASE_URL format: " + fullUrl, e);
+            Matcher m = DB_URL_PATTERN.matcher(fullUrl);
+            if (!m.matches()) {
+                throw new SQLException("Could not parse DATABASE_URL (unexpected format). Value length: " + fullUrl.length());
             }
+
+            String user = m.group(1);
+            String pass = m.group(2);
+            String host = m.group(3);
+            String port = m.group(4);
+            String db   = m.group(5);
+
+            String jdbcUrl = "jdbc:postgresql://" + host + ":" + port + "/" + db + "?sslmode=require";
+
+            System.out.println("[DBConnection] Connecting to host=" + host + " port=" + port + " db=" + db + " user=" + user);
+
+            return DriverManager.getConnection(jdbcUrl, user, pass);
         }
 
         // Fallback: individual env vars, or local defaults for running on your own machine
